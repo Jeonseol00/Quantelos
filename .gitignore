@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Signing Secrets (KRITIS - JANGAN PERNAH DI-COMMIT!)
+*.keystore
+quantelos-base64.txt

@@ -1,0 +1,19 @@
+default_platform(:android)
+
+platform :android do
+  desc "Kompilasi React Native ke APK dan tandatangani (Signed APK)"
+  lane :build_apk do
+    gradle(
+      task: "assemble",
+      build_type: "Release",
+      project_dir: "android",
+      properties: {
+        "android.injected.signing.store.file" => "release.keystore",
+        "android.injected.signing.store.password" => ENV["ANDROID_KEYSTORE_PASSWORD"],
+        "android.injected.signing.key.alias" => ENV["ANDROID_KEY_ALIAS"],
+        "android.injected.signing.key.password" => ENV["ANDROID_KEY_PASSWORD"]
+      }
+    )
+    # File APK akan di-output ke: android/app/build/outputs/apk/release/app-release.apk
+  end
+end
