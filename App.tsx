@@ -22,32 +22,47 @@ const Tab = createBottomTabNavigator();
 export default function App() {
   const [isDbReady, setIsDbReady] = useState(false);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(true);
+  const [bootError, setBootError] = useState<string | null>(null);
   const loadTransactions = useFinancialStore(state => state.loadTransactions);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
     async function boot() {
-      await initDatabase();
-      await syncEngine.initialize();
-      
-      const onboardingStatus = await getAppSetting('has_seen_onboarding');
-      if (onboardingStatus !== 'true') {
-        setHasSeenOnboarding(false);
-      }
-      
-      await loadTransactions();
-      await useFinancialStore.getState().loadLatestSnapshot();
-      setIsDbReady(true);
-
-      // Mulai pantau koneksi internet setelah database siap
-      unsubscribe = NetInfo.addEventListener(state => {
-        if (state.isConnected) {
-          syncEngine.syncPendingTransactions().catch(err => 
-            console.log('[Sync Engine Connection Trigger Error]', err)
-          );
+      try {
+        console.log('[Quantelos Boot] Starting database validation...');
+        await initDatabase();
+        
+        console.log('[Quantelos Boot] Initializing sync engines...');
+        await syncEngine.initialize();
+        
+        console.log('[Quantelos Boot] Checking application onboarding settings...');
+        const onboardingStatus = await getAppSetting('has_seen_onboarding');
+        if (onboardingStatus !== 'true') {
+          setHasSeenOnboarding(false);
         }
-      });
+        
+        console.log('[Quantelos Boot] Reading transactions ledger...');
+        await loadTransactions();
+        
+        console.log('[Quantelos Boot] Loading current financial snapshot...');
+        await useFinancialStore.getState().loadLatestSnapshot();
+        
+        console.log('[Quantelos Boot] System fully operational.');
+        setIsDbReady(true);
+
+        // Mulai pantau koneksi internet setelah database siap
+        unsubscribe = NetInfo.addEventListener(state => {
+          if (state.isConnected) {
+            syncEngine.syncPendingTransactions().catch(err => 
+              console.log('[Sync Engine Connection Trigger Error]', err)
+            );
+          }
+        });
+      } catch (err: any) {
+        console.error('[Quantelos Core Crash]', err);
+        setBootError(err?.message || String(err));
+      }
     }
 
     boot();
@@ -62,10 +77,73 @@ export default function App() {
     setHasSeenOnboarding(true);
   };
 
+  const handleResetDatabase = async () => {
+    try {
+      const { dangerouslyResetDatabase } = require('./src/db/sqlcipher');
+      await dangerouslyResetDatabase();
+      // Restart state
+      setBootError(null);
+      setIsDbReady(false);
+      // Re-trigger boot manually
+      const { initDatabase: reInit } = require('./src/db/sqlcipher');
+      await reInit();
+      await syncEngine.initialize();
+      setHasSeenOnboarding(false);
+      await loadTransactions();
+      await useFinancialStore.getState().loadLatestSnapshot();
+      setIsDbReady(true);
+    } catch (e: any) {
+      alert('Gagal mereset database: ' + e.message);
+    }
+  };
+
+  if (bootError) {
+    return (
+      <View style={styles.errorContainer}>
+        <View style={styles.errorCard}>
+          <Text style={styles.errorTitle}>🚨 Sistem Gagal Menginisialisasi</Text>
+          <Text style={styles.errorSubtitle}>
+            Quantelos CFO mendeteksi kegagalan pada saat memuat basis data lokal atau subsistem sinkronisasi.
+          </Text>
+          
+          <View style={styles.logContainer}>
+            <Text style={styles.logTitle}>Log Kesalahan Sistem:</Text>
+            <Text style={styles.logText}>{bootError}</Text>
+          </View>
+
+          <Text style={styles.instructionText}>
+            Ini biasanya disebabkan oleh ketidakcocokan native module Android. Coba hapus cache aplikasi atau lakukan reset brankas lokal di bawah ini:
+          </Text>
+
+          <View style={styles.buttonGroup}>
+            <Text 
+              style={styles.resetButton} 
+              onPress={handleResetDatabase}
+            >
+              🔄 Hapus & Reset Brankas Lokal
+            </Text>
+            
+            <Text 
+              style={styles.retryButton} 
+              onPress={() => {
+                setBootError(null);
+                setIsDbReady(false);
+                // Trigger reload
+                setIsDbReady(false);
+              }}
+            >
+              Coba Lagi
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   if (!isDbReady) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3B82F6" />
+        <ActivityIndicator size="large" color="#D0BCFF" />
         <Text style={styles.loadingText}>Membuka Buku Kas Quantelos...</Text>
       </View>
     );
@@ -148,5 +226,93 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0.5,
+  },
+  errorContainer: {
+    flex: 1,
+    backgroundColor: '#0A0A0F',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  errorCard: {
+    backgroundColor: '#111118',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  errorTitle: {
+    color: '#FF6B6B',
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  errorSubtitle: {
+    color: '#958EA0',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  logContainer: {
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.04)',
+    padding: 16,
+    marginBottom: 20,
+  },
+  logTitle: {
+    color: '#D0BCFF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  logText: {
+    color: '#E2E8F0',
+    fontFamily: 'monospace',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  instructionText: {
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  buttonGroup: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+  resetButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    color: '#FCA5A5',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderRadius: 12,
+    paddingVertical: 14,
+    textAlign: 'center',
+    fontWeight: '600',
+    fontSize: 13,
+    overflow: 'hidden',
+  },
+  retryButton: {
+    backgroundColor: '#3B82F6',
+    color: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 14,
+    textAlign: 'center',
+    fontWeight: '600',
+    fontSize: 13,
+    overflow: 'hidden',
   }
 });
