@@ -12,7 +12,7 @@
     "@react-native-community/netinfo": "^12.0.1",
     "@react-navigation/bottom-tabs": "^6.5.20",
     "@react-navigation/native": "^6.1.17",
-    "@supabase/supabase-js": "^2.106.1",
+    "@supabase/supabase-js": "^2.42.0",
     "expo": "~54.0.33",
     "expo-file-system": "^55.0.21",
     "expo-linear-gradient": "^55.0.14",
